@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gestione Estintori</title>
+<style>
+  body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
+  #mapContainer { position: relative; width: 100%; height: 70vh; border: 1px solid #ccc; background-size: contain; background-repeat: no-repeat; background-position: center; }
+  .extinguisher { position: absolute; width: 30px; height: 30px; background: red; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; }
+  #infoCard { position: fixed; top: 10%; left: 50%; transform: translateX(-50%); background: white; padding: 20px; border: 1px solid #ccc; display: none; z-index: 100; width: 250px; }
+  #infoCard input { width: 100%; margin-bottom: 5px; }
+  #history { padding: 10px; max-height: 20vh; overflow-y: auto; border-top: 1px solid #ccc; }
+  button { margin-top:5px; margin-right:5px; }
+</style>
+</head>
+<body>
+
+<h2 style="text-align:center;">Gestione Estintori</h2>
+<input type="file" id="uploadMap" accept="image/*"><br><br>
+<div id="mapContainer"></div>
+
+<div id="infoCard">
+  <h3>Estintore Info</h3>
+  <label>ID:</label>
+  <input type="text" id="extId"><br>
+  <label>Tipo:</label>
+  <input type="text" id="extType"><br>
+  <label>Scadenza manutenzione:</label>
+  <input type="date" id="extNextCheck"><br>
+  <label>Ubicazione:</label>
+  <input type="text" id="extLocation"><br>
+  <button id="confirmCheck">Conferma controllo</button>
+  <button id="closeCard">Chiudi</button>
+</div>
+
+<h3 style="text-align:center;">Registro controlli</h3>
+<button id="exportCSV">Esporta CSV</button>
+<div id="history"></div>
+
+<script>
+const mapContainer = document.getElementById('mapContainer');
+const uploadMap = document.getElementById('uploadMap');
+let extinguishers = JSON.parse(localStorage.getItem('extinguishers')) || [];
+let selectedExt = null;
+
+// Carica immagine salvata in locale
+if(localStorage.getItem('mapImage')){
+  mapContainer.style.backgroundImage = `url(${localStorage.getItem('mapImage')})`;
+}
+
+// Carica planimetria
+uploadMap.addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      mapContainer.style.backgroundImage = `url(${reader.result})`;
+      localStorage.setItem('mapImage', reader.result);
+    };
+    reader.readAsDataURL(file);
+  }
+});
+
+// Cliccare sulla mappa per aggiungere un estintore
+mapContainer.addEventListener('click', (e) => {
+  const rect = mapContainer.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  const ext = {
+    id: `E${extinguishers.length + 1}`,
+    type: '',
+    nextCheck: '',
+    lastCheck: '',
+    location: '',
+    x, y
+  };
+  extinguishers.push(ext);
+  saveData();
+  drawExtinguishers();
+});
+
+function drawExtinguishers() {
+  mapContainer.innerHTML = '';
+  extinguishers.forEach((ext) => {
+    const div = document.createElement('div');
+    div.className = 'extinguisher';
+    div.style.left = ext.x - 15 + 'px';
+    div.style.top = ext.y - 15 + 'px';
+    div.textContent = ext.id.replace('E','');
+    div.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      openInfoCard(ext);
+    });
+    mapContainer.appendChild(div);
+  });
+}
+
+const infoCard = document.getElementById('infoCard');
+const extIdInput = document.getElementById('extId');
+const extTypeInput = document.getElementById('extType');
+const extNextCheckInput = document.getElementById('extNextCheck');
+const extLocationInput = document.getElementById('extLocation');
+const confirmCheckBtn = document.getElementById('confirmCheck');
+const closeCardBtn = document.getElementById('closeCard');
+const historyDiv = document.getElementById('history');
+
+function openInfoCard(ext) {
+  selectedExt = ext;
+  infoCard.style.display = 'block';
+  extIdInput.value = ext.id;
+  extTypeInput.value = ext.type;
+  extNextCheckInput.value = ext.nextCheck;
+  extLocationInput.value = ext.location;
+}
+
+confirmCheckBtn.addEventListener('click', () => {
+  if (!selectedExt) return;
+  selectedExt.id = extIdInput.value;
+  selectedExt.type = extTypeInput.value;
+  selectedExt.nextCheck = extNextCheckInput.value;
+  selectedExt.location = extLocationInput.value;
+  selectedExt.lastCheck = new Date().toLocaleString();
+  saveData();
+  updateHistory();
+  infoCard.style.display = 'none';
+});
+
+closeCardBtn.addEventListener('click', () => {
+  infoCard.style.display = 'none';
+});
+
+function updateHistory() {
+  historyDiv.innerHTML = '';
+  extinguishers.forEach(ext => {
+    if(ext.lastCheck){
+      const div = document.createElement('div');
+      div.textContent = `${ext.id} - Tipo: ${ext.type} - Ultimo controllo: ${ext.lastCheck}`;
+      historyDiv.appendChild(div);
+    }
+  });
+}
+
+function saveData() {
+  localStorage.setItem('extinguishers', JSON.stringify(extinguishers));
+}
+
+updateHistory();
+drawExtinguishers();
+
+// Esporta CSV
+document.getElementById('exportCSV').addEventListener('click', () => {
+  if(extinguishers.length === 0) return;
+  let csv = "ID,Tipo,Scadenza,Ubicazione,Ultimo Controllo\n";
+  extinguishers.forEach(ext => {
+    csv += `${ext.id},${ext.type},${ext.nextCheck},${ext.location},${ext.lastCheck}\n`;
+  });
+  const blob = new Blob([csv], {type: 'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'registro_estintori.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+});
+</script>
+
+</body>
+</html>
